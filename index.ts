@@ -12,13 +12,14 @@ interface Lobby {
   user1ID: string | null;
   user2ID: string | null;
   ended: boolean;
+  alreadyUploaded: boolean;
 }
 
 let lobbies: Lobby[] = [];
 
 const server = Bun.serve<{ socketId: string }>({
   port: 5000,
-  async fetch(req, server) {
+  fetch(req, server) {
     const socketIdGEN = crypto.randomUUID().split("-")[0];
 
     const upgraded = server.upgrade(req, {
@@ -32,7 +33,7 @@ const server = Bun.serve<{ socketId: string }>({
     open(ws) {
       console.log("Socket opened");
     },
-    message(ws, message) {
+    async message(ws, message) {
       const parsedMessage = JSON.parse(message as string);
       switch (parsedMessage.ev) {
         case "choseName":
@@ -55,6 +56,7 @@ const server = Bun.serve<{ socketId: string }>({
               user1ID: parsedMessage.name,
               user2ID: null,
               ended: false,
+              alreadyUploaded: false,
             });
             ws.send(JSON.stringify(registerTeam1));
             return;
@@ -120,6 +122,36 @@ const server = Bun.serve<{ socketId: string }>({
           if (foundLobby.ended) return;
           foundLobby.ended = true;
           ws.send(JSON.stringify({ ev: "checkedVetoUpload" }));
+          break;
+        }
+        // ev: 'sendToDiscord',
+        // link: window.location.hostname,
+        // authKey: process.env.AUTH_KEY as string,
+        case "sendToDiscord": {
+          if (parsedMessage.authKey != (process.env.AUTH_KEY as string)) return;
+
+          const foundLobby = lobbies.find(
+            (lobby) => lobby.lobbyId == parsedMessage.lobbyId
+          );
+          if (!foundLobby || foundLobby.alreadyUploaded) return;
+
+          foundLobby.alreadyUploaded = true;
+          try {
+            const result = await fetch(
+              process.env.NACK_DISCORD_WEBHOOK_VETO as string,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  content: `${foundLobby.user1ID} VS ${foundLobby.user2ID}\n${parsedMessage.link}`,
+                }),
+              }
+            );
+          } catch (err) {
+            console.log(err);
+          }
         }
       }
     },
