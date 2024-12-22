@@ -124,11 +124,12 @@ const server = Bun.serve<{ socketId: string }>({
           ws.send(JSON.stringify({ ev: "checkedVetoUpload" }));
           break;
         }
-        // ev: 'sendToDiscord',
-        // link: window.location.hostname,
-        // authKey: process.env.AUTH_KEY as string,
         case "sendToDiscord": {
-          if (parsedMessage.authKey != (process.env.AUTH_KEY as string)) return;
+          if (
+            parsedMessage.authKey != (process.env.AUTH_KEY as string) ||
+            process.env.DISCORD_WEBHOOK_VETO == undefined
+          )
+            return;
 
           const foundLobby = lobbies.find(
             (lobby) => lobby.lobbyId == parsedMessage.lobbyId
@@ -138,7 +139,7 @@ const server = Bun.serve<{ socketId: string }>({
           foundLobby.alreadyUploaded = true;
           try {
             const result = await fetch(
-              process.env.NACK_DISCORD_WEBHOOK_VETO as string,
+              process.env.DISCORD_WEBHOOK_VETO as string,
               {
                 method: "POST",
                 headers: {
